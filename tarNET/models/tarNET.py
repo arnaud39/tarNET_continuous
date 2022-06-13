@@ -3,6 +3,9 @@ import tensorflow as tf
 from ..layers.gather import Gather_Streams
 from ..layers.split import Split_Streams
 from ..layers.MLP import MLP
+from pickle import load
+
+from typing import Any
 
 
 class tarNET(tf.keras.Model):
@@ -17,6 +20,8 @@ class tarNET(tf.keras.Model):
         y_layers: int = 3,
         activation: str = "relu",
         reg_l2: float = 0.0,
+        treatment_as_input: bool = False,
+        scaler: Any = None,
     ):
         """Initialize the layers used by the model.
 
@@ -30,6 +35,10 @@ class tarNET(tf.keras.Model):
             reg_l2 (float, optional): _description_. Defaults to 0.0.
         """
         super(tarNET, self).__init__()
+        # uniform quantile transform for treatment
+        self.scaler = scaler if scaler else load(open("scaler.pkl", "rb"))
+
+        # input normalization layer
         self.normalizer_layer = normalizer_layer
         self.phi = MLP(
             units=200,
@@ -56,20 +65,23 @@ class tarNET(tf.keras.Model):
             for k in range(n_treatments)
         ]
 
+        self.n_treatments = n_treatments
+
         self.output_ = Gather_Streams()
 
     def call(self, x):
 
         cofeatures_input, treatment_input = x
-        treatment_input = tf.cast(treatment_input, tf.int32)
+
+        treatment_cat = tf.cast(
+            self.scaler.transform(treatment_input) * (self.n_treatment - 1), tf.int32
+        )
         if self.normalizer_layer:
             cofeatures_input = self.normalizer_layer(cofeatures_input)
         x_flux = self.phi(cofeatures_input)
 
         streams = [
-            self.splitter(
-                [x_flux, treatment_input, tf.cast(indice_treatment, tf.int32)]
-            )
+            self.splitter([x_flux, treatment_cat, tf.cast(indice_treatment, tf.int32)])
             for indice_treatment in range(len(self.y_hiddens))
         ]
         # xstream is a list of tuple, containing the gathered and indice position, let's unpack them
