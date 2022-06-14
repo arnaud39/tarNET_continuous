@@ -22,6 +22,7 @@ class tarNET(tf.keras.Model):
         reg_l2: float = 0.0,
         treatment_as_input: bool = False,
         scaler: Any = None,
+        output_bias: float = None,
     ):
         """Initialize the layers used by the model.
 
@@ -61,7 +62,12 @@ class tarNET(tf.keras.Model):
 
         # add linear function to cover the normalized output
         self.y_outputs = [
-            tf.keras.layers.Dense(output_dim, activation="linear", name=f"top_{k}")
+            tf.keras.layers.Dense(
+                output_dim,
+                activation="sigmoid",
+                bias_initializer=output_bias,
+                name=f"top_{k}",
+            )
             for k in range(n_treatments)
         ]
 
@@ -72,10 +78,8 @@ class tarNET(tf.keras.Model):
     def call(self, x):
 
         cofeatures_input, treatment_input = x
+        treatment_cat = tf.cast(treatment_input, tf.int32)
 
-        treatment_cat = tf.cast(
-            self.scaler.transform(treatment_input) * (self.n_treatment - 1), tf.int32
-        )
         if self.normalizer_layer:
             cofeatures_input = self.normalizer_layer(cofeatures_input)
         x_flux = self.phi(cofeatures_input)
